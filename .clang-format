@@ -1,0 +1,14 @@
+BreakBeforeBraces: Attach
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveBitFields: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignOperands: AlignAfterOperator
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+BreakConstructorInitializers: AfterColon
+ColumnLimit: 100

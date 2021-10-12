@@ -33,4 +33,4 @@
 /vis/viewer/set/autoRefresh true
 /vis/verbose warnings
 
-/run/beamOn 500
+/run/beamOn 5000
