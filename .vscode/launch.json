@@ -1,0 +1,37 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug/hit_sim",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/debug/",
+            "environment": [
+                {"name": "G4ABLADATA", "value": "/usr/share/geant4-abladata/G4ABLA3.1"},
+                {"name": "G4ENSDFSTATEDATA", "value": "/usr/share/geant4-ensdfstatedata/G4ENSDFSTATE2.3"},
+                {"name": "G4INCLDATA", "value": "/usr/share/geant4-incldata/G4INCL1.0"},
+                {"name": "G4LEDATA", "value": "/usr/share/geant4-ledata/G4EMLOW7.13"},
+                {"name": "G4LEVELGAMMADATA", "value": "/usr/share/geant4-levelgammadata/PhotonEvaporation5.7"},
+                {"name": "G4PARTICLEXSDATA", "value": "/usr/share/geant4-particlexsdata/G4PARTICLEXS3.1"},
+                {"name": "G4PIIDATA", "value": "/usr/share/geant4-piidata/G4PII1.3"},
+                {"name": "G4RADIOACTIVEDATA", "value": "/usr/share/geant4-radioactivedata/RadioactiveDecay5.4"},
+                {"name": "G4SAIDXSDATA", "value": "/usr/share/geant4-saiddata/G4SAIDDATA2.0"}
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

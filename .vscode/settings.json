@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.icc": "cpp",
+        "line": "cpp",
+        "regex": "cpp"
+    }
+}
