@@ -28,7 +28,7 @@
 
 # /vis/scene/add/axes
 
-/vis/geometry/set/visibility World 0 false
+# /vis/geometry/set/visibility World 0 false
 
 /vis/viewer/set/autoRefresh true
 /vis/verbose warnings
