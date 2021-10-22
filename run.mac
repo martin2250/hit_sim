@@ -1,1 +1,28 @@
+ERROR
+
+/hit_sim/set_gap_position 0 mm
+/hit_sim/file_open /tmp/gap_30.dat
+/hit_sim/detector_update
+/run/initialize
 /run/beamOn 50000
+
+/hit_sim/set_gap_position -2 mm
+/hit_sim/file_open /tmp/gap_20.dat
+/run/initialize
+/hit_sim/detector_update
+/run/beamOn 50000
+
+/hit_sim/set_gap_position -1 mm
+/hit_sim/file_open /tmp/gap_10.dat
+/run/initialize
+/hit_sim/detector_update
+/run/beamOn 50000
+
+/hit_sim/set_gap_position 0 mm
+/hit_sim/file_open /tmp/gap_00.dat
+/hit_sim/detector_update
+/run/initialize
+/run/beamOn 50000
+
+
+/hit_sim/file_close

@@ -26,11 +26,5 @@
 
 /vis/scene/endOfEventAction accumulate
 
-# /vis/scene/add/axes
-
-# /vis/geometry/set/visibility World 0 false
-
-/vis/viewer/set/autoRefresh true
-/vis/verbose warnings
-
-/run/beamOn 5000
+/run/initialize
+/run/beamOn 1000
