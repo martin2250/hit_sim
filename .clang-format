@@ -1,5 +1,5 @@
 BreakBeforeBraces: Attach
-UseTab: Always
+UseTab: ForIndentation
 TabWidth: 4
 IndentWidth: 4
 AlignAfterOpenBracket: AlwaysBreak

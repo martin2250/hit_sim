@@ -10,12 +10,12 @@
 #include "G4UIcmdWithAString.hh"
 #include "G4UImanager.hh"
 #include "G4UImessenger.hh"
+#include "G4UserLimits.hh"
 #include "G4VUserActionInitialization.hh"
 #include "G4VUserDetectorConstruction.hh"
 #include "G4VUserPrimaryGeneratorAction.hh"
 #include "G4VisExecutive.hh"
 #include "QBBC.hh"
-#include "G4UserLimits.hh"
 #include <CLHEP/Random/RandGauss.h>
 #include <G4UIcmdWithADoubleAndUnit.hh>
 #include <G4UIcmdWithoutParameter.hh>
@@ -26,39 +26,38 @@
 using namespace CLHEP;
 
 double backplate_thickness = 200 * um;
-double chip_thickness	   = 150 * um;
-double chip_gap			   = 200 * um;
-double chip_gap_offset	   = 0 * mm;
+double chip_thickness      = 150 * um;
+double chip_gap            = 200 * um;
+double chip_gap_offset     = 0 * mm;
 
 double particle_energy = 1 * MeV;
 
 std::string detector_variant = "chip_backplate";
 
 std::ofstream file_out;
-std::mutex	  file_out_mut;
+std::mutex    file_out_mut;
 
 class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
   public:
-
 	HitSimDetectorConstruction() {}
 	virtual ~HitSimDetectorConstruction() {}
 
 	virtual G4VPhysicalVolume *Construct() {
 		G4NistManager *nist = G4NistManager::Instance();
 
-		G4Material *mat_air		= nist->BuildMaterialWithNewDensity("VACUUM", "G4_AIR", 0.1 * g / m3);
+		G4Material *mat_air = nist->BuildMaterialWithNewDensity("VACUUM", "G4_AIR", 0.1 * g / m3);
 		// G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
 		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
-		G4Material *mat_carbon	= nist->FindOrBuildMaterial("G4_C");
+		G4Material *mat_carbon  = nist->FindOrBuildMaterial("G4_C");
 
 		G4Element *el_carbon   = nist->FindOrBuildElement("C");
 		G4Element *el_oxygen   = nist->FindOrBuildElement("O");
 		G4Element *el_chlorine = nist->FindOrBuildElement("Cl");
 		G4Element *el_hydrogen = nist->FindOrBuildElement("H");
 
-		double world_width	= 20 * mm;
+		double world_width  = 20 * mm;
 		double world_height = 20 * mm;
-		double world_depth	= 20 * mm;
+		double world_depth  = 20 * mm;
 
 		// epoxy elements C21H25ClO5
 		// (https://pubchem.ncbi.nlm.nih.gov/compound/Epoxy-resin)
@@ -76,13 +75,13 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 		// world (air filled box, wireframe render)
 		G4Box *world_box = new G4Box("World", world_width / 2, world_height / 2, world_depth / 2);
 		G4LogicalVolume *world_logical = new G4LogicalVolume(world_box, mat_air, "World");
-		G4VisAttributes *world_vis	   = new G4VisAttributes();
+		G4VisAttributes *world_vis     = new G4VisAttributes();
 		world_vis->SetForceWireframe(true);
 		world_logical->SetVisAttributes(world_vis);
 		G4VPhysicalVolume *world_physical = new G4PVPlacement(
-			nullptr,		 // rotation
-			G4ThreeVector(), // position
-			world_logical, "World", nullptr, false, 0, true);
+		    nullptr,         // rotation
+		    G4ThreeVector(), // position
+		    world_logical, "World", nullptr, false, 0, true);
 
 		if (detector_variant.find("backplate") != std::string::npos) {
 			// CFRP backplate
@@ -92,14 +91,14 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 			} else {
 				mat_backplate = mat_cfrp;
 			}
-			G4Box *backplate_box = new G4Box(
-				"Backplate", world_width / 2, world_height / 2, backplate_thickness / 2);
+			G4Box *backplate_box =
+			    new G4Box("Backplate", world_width / 2, world_height / 2, backplate_thickness / 2);
 			G4LogicalVolume *backplate_logical =
-				new G4LogicalVolume(backplate_box, mat_backplate, "Backplate");
+			    new G4LogicalVolume(backplate_box, mat_backplate, "Backplate");
 			G4VPhysicalVolume *backplate_physical = new G4PVPlacement(
-				nullptr,											// rotation
-				G4ThreeVector(0, 0, backplate_thickness / 2), // position
-				backplate_logical, "Backplate", world_logical, false, 0, true);
+			    nullptr,                                      // rotation
+			    G4ThreeVector(0, 0, backplate_thickness / 2), // position
+			    backplate_logical, "Backplate", world_logical, false, 0, true);
 		}
 
 		if (detector_variant.find("chip") != std::string::npos) {
@@ -109,15 +108,15 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 				auto chip_edge_outer = sign_x * world_width / 2;
 
 				auto   chip_width = std::abs(chip_edge_inner - chip_edge_outer);
-				auto   chip_pos	  = (chip_edge_inner + chip_edge_outer) / 2;
+				auto   chip_pos   = (chip_edge_inner + chip_edge_outer) / 2;
 				G4Box *chip_box =
-					new G4Box("Chip", chip_width / 2, world_height / 2, chip_thickness / 2);
-				G4LogicalVolume *  chip_logical	 = new G4LogicalVolume(chip_box, mat_silicon, "Chip");
+				    new G4Box("Chip", chip_width / 2, world_height / 2, chip_thickness / 2);
+				G4LogicalVolume *chip_logical = new G4LogicalVolume(chip_box, mat_silicon, "Chip");
 				G4VPhysicalVolume *chip_physical = new G4PVPlacement(
-					nullptr, // rotation
-					G4ThreeVector(
-						chip_pos, 0, backplate_thickness + chip_thickness / 2), // position
-					chip_logical, "Chip", world_logical, false, 0, true);
+				    nullptr, // rotation
+				    G4ThreeVector(
+				        chip_pos, 0, backplate_thickness + chip_thickness / 2), // position
+				    chip_logical, "Chip", world_logical, false, 0, true);
 			}
 		}
 
@@ -128,9 +127,9 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 class HitSimPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction {
   public:
 	HitSimPrimaryGeneratorAction() {
-		this->fParticleGun					= new G4ParticleGun(1);
-		G4ParticleTable *	  particleTable = G4ParticleTable::GetParticleTable();
-		G4ParticleDefinition *particle		= particleTable->FindParticle("proton");
+		this->fParticleGun                  = new G4ParticleGun(1);
+		G4ParticleTable *     particleTable = G4ParticleTable::GetParticleTable();
+		G4ParticleDefinition *particle      = particleTable->FindParticle("proton");
 		this->fParticleGun->SetParticleDefinition(particle);
 		this->fParticleGun->SetParticlePosition(G4ThreeVector(0 * mm, 0, -9 * mm));
 		this->fParticleGun->SetParticleMomentum(G4ParticleMomentum(0, 0, particle_energy));
@@ -143,13 +142,13 @@ class HitSimPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction {
 		double pos_max = 6;
 		double pos_x   = this->gauss->fire(0, 1 / 2.355);
 		double pos_y   = this->gauss->fire(0, 1 / 2.355);
-		pos_x		   = std::min(std::max(pos_x, -pos_max), pos_max);
-		pos_y		   = std::min(std::max(pos_y, -pos_max), pos_max);
+		pos_x          = std::min(std::max(pos_x, -pos_max), pos_max);
+		pos_y          = std::min(std::max(pos_y, -pos_max), pos_max);
 		fParticleGun->SetParticlePosition(G4ThreeVector(pos_x * mm, pos_y * mm, -9 * mm));
 		this->fParticleGun->GeneratePrimaryVertex(event);
 	}
 
-	G4ParticleGun *	  fParticleGun;
+	G4ParticleGun *   fParticleGun;
 	CLHEP::RandGauss *gauss;
 };
 
@@ -171,7 +170,7 @@ class HitSimTrackingAction : public G4UserTrackingAction {
 	virtual ~HitSimTrackingAction() {}
 
 	virtual void PostUserTrackingAction(const G4Track *track) {
-		std::string	  particle_name		= track->GetParticleDefinition()->GetParticleName();
+		std::string   particle_name     = track->GetParticleDefinition()->GetParticleName();
 		G4ThreeVector particle_position = track->GetPosition();
 		G4ThreeVector particle_momentum = track->GetMomentum();
 
@@ -180,9 +179,9 @@ class HitSimTrackingAction : public G4UserTrackingAction {
 		}
 
 		std::string line = string_format(
-			"%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n", particle_position.getX(),
-			particle_position.getY(), particle_position.getZ(), particle_momentum.getX(),
-			particle_momentum.getY(), particle_momentum.getZ(), particle_name.c_str());
+		    "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n", particle_position.getX(),
+		    particle_position.getY(), particle_position.getZ(), particle_momentum.getX(),
+		    particle_momentum.getY(), particle_momentum.getZ(), particle_name.c_str());
 
 		{
 			const std::lock_guard<std::mutex> lock(file_out_mut);
@@ -219,19 +218,19 @@ class HitSimActionInitialization : public G4VUserActionInitialization {
 };
 
 class HitSimMessenger : public G4UImessenger {
-	G4UIdirectory *			   dir_hitsim;
-	G4UIcmdWithoutParameter *  cmd_detector_update;
+	G4UIdirectory *          dir_hitsim;
+	G4UIcmdWithoutParameter *cmd_detector_update;
 
-	std::tuple<G4UIcmdWithADoubleAndUnit*, std::string, double*> double_params[5] = {
-		std::make_tuple(nullptr, "/hit_sim/set_gap_position", &chip_gap_offset),
-		std::make_tuple(nullptr, "/hit_sim/set_gap_width", &chip_gap),
-		std::make_tuple(nullptr, "/hit_sim/set_backplate_thickness", &backplate_thickness),
-		std::make_tuple(nullptr, "/hit_sim/set_chip_thickness", &chip_thickness),
-		std::make_tuple(nullptr, "/hit_sim/set_particle_energy", &particle_energy),
+	std::tuple<G4UIcmdWithADoubleAndUnit *, std::string, double *> double_params[5] = {
+	    std::make_tuple(nullptr, "/hit_sim/set_gap_position", &chip_gap_offset),
+	    std::make_tuple(nullptr, "/hit_sim/set_gap_width", &chip_gap),
+	    std::make_tuple(nullptr, "/hit_sim/set_backplate_thickness", &backplate_thickness),
+	    std::make_tuple(nullptr, "/hit_sim/set_chip_thickness", &chip_thickness),
+	    std::make_tuple(nullptr, "/hit_sim/set_particle_energy", &particle_energy),
 	};
 
-	G4UIcmdWithAString *	 cmd_file_open;
-	G4UIcmdWithAString *	 cmd_detector_variant;
+	G4UIcmdWithAString *     cmd_file_open;
+	G4UIcmdWithAString *     cmd_detector_variant;
 	G4UIcmdWithoutParameter *cmd_file_close;
 
 	HitSimDetectorConstruction *detector;
@@ -274,9 +273,9 @@ class HitSimMessenger : public G4UImessenger {
 			if (file_out.is_open()) {
 				file_out.close();
 			}
-		}else if (new_cmd == this->cmd_detector_variant) {
+		} else if (new_cmd == this->cmd_detector_variant) {
 			detector_variant = std::string(value);
-		}  else {
+		} else {
 			for (auto &[cmd, name, ptr] : this->double_params) {
 				if (cmd == new_cmd) {
 					*ptr = cmd->GetNewDoubleValue(value);
@@ -296,13 +295,13 @@ int main(int argc, char **argv) {
 	auto *runManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Default);
 	runManager->SetNumberOfThreads(2);
 
-	auto detector			= new HitSimDetectorConstruction();
+	auto detector           = new HitSimDetectorConstruction();
 	auto detector_messenger = new HitSimMessenger(detector);
 
 	runManager->SetUserInitialization(detector);
 	// runManager->SetUserInitialization(new QBBC());
-	G4PhysListFactory *	   physListFactory = new G4PhysListFactory();
-	G4VModularPhysicsList *physicsList	   = physListFactory->GetReferencePhysList("QGSP_BERT_HP");
+	G4PhysListFactory *    physListFactory = new G4PhysListFactory();
+	G4VModularPhysicsList *physicsList     = physListFactory->GetReferencePhysList("QGSP_BERT_HP");
 	physicsList->RegisterPhysics(new G4StepLimiterPhysics());
 	physicsList->RegisterPhysics(new G4RadioactiveDecayPhysics());
 	runManager->SetUserInitialization(physicsList);
