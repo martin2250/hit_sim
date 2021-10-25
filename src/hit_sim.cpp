@@ -15,6 +15,7 @@
 #include "G4VUserPrimaryGeneratorAction.hh"
 #include "G4VisExecutive.hh"
 #include "QBBC.hh"
+#include "G4UserLimits.hh"
 #include <CLHEP/Random/RandGauss.h>
 #include <G4UIcmdWithADoubleAndUnit.hh>
 #include <G4UIcmdWithoutParameter.hh>
@@ -45,7 +46,8 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 	virtual G4VPhysicalVolume *Construct() {
 		G4NistManager *nist = G4NistManager::Instance();
 
-		G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
+		G4Material *mat_air		= nist->BuildMaterialWithNewDensity("VACUUM", "G4_AIR", 0.1 * g / m3);
+		// G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
 		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
 		G4Material *mat_carbon	= nist->FindOrBuildMaterial("G4_C");
 
@@ -83,14 +85,17 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 			world_logical, "World", nullptr, false, 0, true);
 
 		if (detector_variant.find("backplate") != std::string::npos) {
-			if (detector_variant.find("water") != std::string::npos) {
-				mat_cfrp = nist->FindOrBuildMaterial("G4_WATER");
-			}
 			// CFRP backplate
+			G4Material *mat_backplate;
+			if (detector_variant.find("water") != std::string::npos) {
+				mat_backplate = nist->FindOrBuildMaterial("G4_WATER");
+			} else {
+				mat_backplate = mat_cfrp;
+			}
 			G4Box *backplate_box = new G4Box(
 				"Backplate", world_width / 2, world_height / 2, backplate_thickness / 2);
 			G4LogicalVolume *backplate_logical =
-				new G4LogicalVolume(backplate_box, mat_cfrp, "Backplate");
+				new G4LogicalVolume(backplate_box, mat_backplate, "Backplate");
 			G4VPhysicalVolume *backplate_physical = new G4PVPlacement(
 				nullptr,											// rotation
 				G4ThreeVector(0, 0, backplate_thickness / 2), // position
@@ -289,7 +294,7 @@ int main(int argc, char **argv) {
 	}
 
 	auto *runManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Default);
-	runManager->SetNumberOfThreads(6);
+	runManager->SetNumberOfThreads(2);
 
 	auto detector			= new HitSimDetectorConstruction();
 	auto detector_messenger = new HitSimMessenger(detector);
@@ -303,8 +308,6 @@ int main(int argc, char **argv) {
 	runManager->SetUserInitialization(physicsList);
 
 	runManager->SetUserInitialization(new HitSimActionInitialization());
-
-	// runManager->Initialize();
 
 	G4VisManager *visManager = new G4VisExecutive();
 	visManager->Initialize();

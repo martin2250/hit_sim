@@ -7,6 +7,7 @@ import pathlib
 import glob
 import os
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 def geant4_env():
     for filename in glob.glob('/etc/profile.d/geant4*.sh'):
@@ -19,33 +20,67 @@ def geant4_env():
                 name, _, value = line.partition('=')
                 os.environ[name] = value
 
+@dataclass
+class Scene:
+    file_name: pathlib.Path
+    label: str
+    parameters: list[str]
+
+scenes: list[Scene] = []
+
+dir_top = pathlib.Path('/tmp/')
+
+parameters_pre = [
+    f'/hit_sim/set_gap_width 100 um',
+    f'/hit_sim/set_particle_energy 50 MeV',
+]
+
+parameters_post = [
+    f'/hit_sim/detector_update',
+    f'/run/initialize',
+    f'/run/beamOn 20000',
+    f'/hit_sim/file_close',
+]
+
+for beam_offset in np.linspace(0, 1, 3):
+    file_name = dir_top / f'offset_{beam_offset:0.2f}.dat'
+    label = f'offset = {beam_offset:0.2f} mm'
+    parameters = parameters_pre.copy() + [
+        f'/hit_sim/set_detector_variant chip_backplate',
+        f'/hit_sim/set_gap_position {beam_offset:0.2f} mm',
+        f'/hit_sim/file_open {file_name}',
+    ] + parameters_post.copy()
+    scenes.append(Scene(
+        file_name,
+        label,
+        parameters,
+    ))
+
+scenes.append(Scene(
+    file_name = dir_top / f'water.dat',
+    label = '0.35 mm water',
+    parameters=parameters_pre.copy() + [
+        f'/hit_sim/set_detector_variant backplate_water',
+        f'/hit_sim/set_backplate_thickness 0.35 mm',
+        f'/hit_sim/file_open {dir_top / "water.dat"}',
+    ] + parameters_post.copy(),
+))
+
 
 hitsim_path = pathlib.Path(__file__).parent.parent
 
-beam_offsets = np.linspace(0, 1.2, 6)
-file_names = [f'/tmp/offset_{o:0.2f}.dat' for o in beam_offsets]
-runmac = '/tmp/run.mac'
+def run_geant(scene: Scene):
+    mac_path = scene.file_name.with_suffix('.mac')
 
-def run_geant(args):
-    beam_offset, file_name = args
-
-    with open(file_name + '.mac', 'w') as f:
-        print(f'/hit_sim/set_gap_width 1000 um', file=f)
-        print(f'/hit_sim/set_gap_position {beam_offset:0.2f} mm', file=f)
-        print(f'/hit_sim/set_particle_energy 120 MeV', file=f)
-
-        print(f'/hit_sim/set_detector_variant backplate_water', file=f)
-        # print(f'/hit_sim/set_detector_variant chip_backplate', file=f)
-
-        print(f'/hit_sim/file_open {file_name}', file=f)
-        print(f'/hit_sim/detector_update', file=f)
-        print(f'/run/initialize', file=f)
-        print(f'/run/beamOn 20000', file=f)
-        print(f'/hit_sim/file_close', file=f)
+    with open(mac_path, 'w') as f:
+        for param in scene.parameters:
+            print(param, file=f)
+       
     retcode = subprocess.call([
         hitsim_path / 'release' / 'hit_sim',
-        file_name + '.mac'
+        mac_path
     ])
+
     if retcode != 0:
         print('hit_sim: nonzero exit code!')
         exit(retcode)
@@ -57,11 +92,12 @@ if len(sys.argv) > 1 and sys.argv[1] == 'run':
         exit(retcode)
     geant4_env()
     tpe = ThreadPoolExecutor(6)
-    _ = list(tpe.map(run_geant, zip(beam_offsets, file_names)))
+    _ = list(tpe.map(run_geant, scenes))
 
-def plot_hist(fname: str, label: str):
-    print(f'reading {fname}')
-    data = np.genfromtxt(fname, dtype='f,f,f,f,f,f,S8', unpack=True)
+
+def plot_scene(scene: Scene, ax_angle: plt.Axes, ax_momentum: plt.Axes):
+    print(f'reading {scene.file_name}')
+    data = np.genfromtxt(scene.file_name, dtype='f,f,f,f,f,f,S8', unpack=True)
 
     position = data[0:3]
     momentum = data[3:6]
@@ -80,13 +116,18 @@ def plot_hist(fname: str, label: str):
 
     print(f'number of protons (with energy left): {np.sum(protons)} {np.sum(protons_energy_left)}')
 
-    plt.hist(1e3*angle[protons_energy_left], range=(0,100), bins=100, log=True, histtype='step', label=label)
-    # plt.hist(momentum[2][protons_energy_left], bins=100, log=True, histtype='step', label=label)
+    ax_angle.hist(1e3*angle[protons_energy_left], range=(0,130), bins=100, log=True, histtype='step', label=scene.label)
+    ax_momentum.hist(momentum[2][protons_energy_left], bins=100, log=True, histtype='step', label=scene.label)
 
-for beam_offset, file_name in zip(beam_offsets, file_names):
-    plot_hist(file_name, f'offset {beam_offset:0.2} mm')
-plt.xlabel('mrad')
+fig, (ax_angle, ax_momentum) = plt.subplots(1, 2, figsize=(9, 5))
 
-plt.legend()
-plt.savefig('/tmp/test.png')
+for scene in scenes:
+    plot_scene(scene, ax_angle, ax_momentum)
+
+ax_angle.set_xlabel('Deflection Angle (mrad)')
+ax_momentum.set_xlabel('Remaining Energy (MeV)')
+
+ax_momentum.legend(loc='upper left')
+
+fig.savefig('/tmp/test.png', dpi=150, transparent=True)
 plt.show()
