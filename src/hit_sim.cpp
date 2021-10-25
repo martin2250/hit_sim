@@ -45,32 +45,43 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 	virtual G4VPhysicalVolume *Construct() {
 		G4NistManager *nist = G4NistManager::Instance();
 
-		G4Material *mat_air = nist->BuildMaterialWithNewDensity("VACUUM", "G4_AIR", 0.1 * g / m3);
+		G4Material *mat_air =
+		    nist->BuildMaterialWithNewDensity("G5_VACUUM", "G4_AIR", 0.1 * g / m3);
 		// G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
 		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
 		G4Material *mat_carbon  = nist->FindOrBuildMaterial("G4_C");
 
 		G4Element *el_carbon   = nist->FindOrBuildElement("C");
 		G4Element *el_oxygen   = nist->FindOrBuildElement("O");
+		G4Element *el_nitrogen = nist->FindOrBuildElement("N");
 		G4Element *el_chlorine = nist->FindOrBuildElement("Cl");
 		G4Element *el_hydrogen = nist->FindOrBuildElement("H");
 
 		double world_width  = 20 * mm;
 		double world_height = 20 * mm;
-		double world_depth  = 20 * mm;
+		double world_depth  = 60 * mm;
 
-		// epoxy elements C21H25ClO5
-		// (https://pubchem.ncbi.nlm.nih.gov/compound/Epoxy-resin)
-		G4Material *mat_epoxy = new G4Material("Epoxy", 1.1 * g / cm3, 4);
-		mat_epoxy->AddElementByNumberOfAtoms(el_carbon, 21);
-		mat_epoxy->AddElementByNumberOfAtoms(el_hydrogen, 25);
-		mat_epoxy->AddElementByNumberOfAtoms(el_chlorine, 1);
-		mat_epoxy->AddElementByNumberOfAtoms(el_oxygen, 5);
+		// // epoxy elements C21H25ClO5
+		// // (https://pubchem.ncbi.nlm.nih.gov/compound/Epoxy-resin)
+		// G4Material *mat_epoxy = new G4Material("Epoxy", 1.1 * g / cm3, 4);
+		// mat_epoxy->AddElementByNumberOfAtoms(el_carbon, 21);
+		// mat_epoxy->AddElementByNumberOfAtoms(el_hydrogen, 25);
+		// mat_epoxy->AddElementByNumberOfAtoms(el_chlorine, 1);
+		// mat_epoxy->AddElementByNumberOfAtoms(el_oxygen, 5);
+		// // CFRP with 50/50 mix
+		// G4Material *mat_cfrp = new G4Material("CFRP", (1.1 + 2) / 2 * g / cm3, 2);
+		// mat_cfrp->AddMaterial(mat_epoxy, 0.5);
+		// mat_cfrp->AddMaterial(mat_carbon, 0.5);
 
-		// CFRP with 50/50 mix
-		G4Material *mat_cfrp = new G4Material("CFRP", (1.1 + 2) / 2 * g / cm3, 2);
-		mat_cfrp->AddMaterial(mat_epoxy, 0.5);
-		mat_cfrp->AddMaterial(mat_carbon, 0.5);
+		// from https://gemc.jlab.org/work/doxy/1.8/cpp__materials_8cc_source.html
+		G4Material *mat_epoxy = new G4Material("Epoxy", 1.16 * g / cm3, 4);
+		mat_epoxy->AddElement(el_hydrogen, 32); // Hydrogen
+		mat_epoxy->AddElement(el_nitrogen, 2);  // Nitrogen
+		mat_epoxy->AddElement(el_oxygen, 4);    // Oxygen
+		mat_epoxy->AddElement(el_carbon, 15);   // Carbon
+		G4Material *mat_cfrp = new G4Material("CFRP", 1.75 * g / cm3, 2);
+		mat_cfrp->AddMaterial(mat_epoxy, 0.25);
+		mat_cfrp->AddMaterial(mat_carbon, 0.75);
 
 		// world (air filled box, wireframe render)
 		G4Box *world_box = new G4Box("World", world_width / 2, world_height / 2, world_depth / 2);
@@ -132,7 +143,8 @@ class HitSimPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction {
 		G4ParticleDefinition *particle      = particleTable->FindParticle("proton");
 		this->fParticleGun->SetParticleDefinition(particle);
 		this->fParticleGun->SetParticlePosition(G4ThreeVector(0 * mm, 0, -9 * mm));
-		this->fParticleGun->SetParticleMomentum(G4ParticleMomentum(0, 0, particle_energy));
+		this->fParticleGun->SetParticleMomentumDirection(G4ThreeVector(0, 0, 1));
+		this->fParticleGun->SetParticleEnergy(particle_energy);
 
 		this->gauss = new CLHEP::RandGauss(CLHEP::RandGauss::getTheEngine());
 	}
@@ -179,9 +191,15 @@ class HitSimTrackingAction : public G4UserTrackingAction {
 		}
 
 		std::string line = string_format(
-		    "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n", particle_position.getX(),
-		    particle_position.getY(), particle_position.getZ(), particle_momentum.getX(),
-		    particle_momentum.getY(), particle_momentum.getZ(), particle_name.c_str());
+		    "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n",
+		    particle_position.getX() / mm,  // stop clang-format
+		    particle_position.getY() / mm,  //
+		    particle_position.getZ() / mm,  //
+		    particle_momentum.getX() / MeV, //
+		    particle_momentum.getY() / MeV, //
+		    particle_momentum.getZ() / MeV, //
+		    particle_name.c_str()           //
+		);
 
 		{
 			const std::lock_guard<std::mutex> lock(file_out_mut);

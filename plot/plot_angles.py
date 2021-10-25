@@ -36,7 +36,7 @@ parameters_pre = [
 ]
 
 parameters_post = [
-    f'/hit_sim/detector_update',
+    # f'/hit_sim/detector_update',
     f'/run/initialize',
     f'/run/beamOn 20000',
     f'/hit_sim/file_close',

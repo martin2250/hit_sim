@@ -29,8 +29,9 @@
 /hit_sim/set_gap_width 100 um
 /hit_sim/set_particle_energy 50 MeV
 /hit_sim/set_detector_variant backplate_water
+/hit_sim/set_backplate_thickness 25 mm
 # /hit_sim/set_detector_variant backplate_chip
-/hit_sim/set_backplate_thickness 0.35 mm
+#/hit_sim/set_backplate_thickness 0.35 mm
 
 /run/initialize
 /run/beamOn 1000
