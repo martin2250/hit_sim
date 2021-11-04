@@ -30,9 +30,13 @@ double chip_thickness      = 150 * um;
 double chip_gap            = 200 * um;
 double chip_gap_offset     = 0 * mm;
 
+// https://www.multi-circuit-boards.eu/en/pcb-design-aid/layer-buildup/flexible-pcb.html
+double pcb_copper_thickness = 36 * um; // 2 * 18 um
+double pcb_polyimide_thickness = 91 * um; // 25 + 2 * 13 + 2 * 20 (includes coverlay adhesive)
+
 double particle_energy = 1 * MeV;
 
-std::string detector_variant = "chip_backplate";
+std::string detector_variant = "chip_backplate_pcb";
 
 std::ofstream file_out;
 std::mutex    file_out_mut;
@@ -50,6 +54,7 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 		// G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
 		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
 		G4Material *mat_carbon  = nist->FindOrBuildMaterial("G4_C");
+		G4Material *mat_copper  = nist->FindOrBuildMaterial("G4_Cu");
 
 		G4Element *el_carbon   = nist->FindOrBuildElement("C");
 		G4Element *el_oxygen   = nist->FindOrBuildElement("O");
@@ -59,7 +64,7 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 
 		double world_width  = 20 * mm;
 		double world_height = 20 * mm;
-		double world_depth  = 60 * mm;
+		double world_depth  = 20 * mm;
 
 		// // epoxy elements C21H25ClO5
 		// // (https://pubchem.ncbi.nlm.nih.gov/compound/Epoxy-resin)
@@ -82,6 +87,12 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 		G4Material *mat_cfrp = new G4Material("CFRP", 1.75 * g / cm3, 2);
 		mat_cfrp->AddMaterial(mat_epoxy, 0.25);
 		mat_cfrp->AddMaterial(mat_carbon, 0.75);
+
+		G4Material* mat_kapton = new G4Material("Kapton", 1.413*g/cm3, 4);
+		mat_kapton->AddElement(el_oxygen,5);
+		mat_kapton->AddElement(el_carbon,22);
+		mat_kapton->AddElement(el_nitrogen,2);
+		mat_kapton->AddElement(el_hydrogen,10);
 
 		// world (air filled box, wireframe render)
 		G4Box *world_box = new G4Box("World", world_width / 2, world_height / 2, world_depth / 2);
@@ -128,6 +139,27 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 				    G4ThreeVector(
 				        chip_pos, 0, backplate_thickness + chip_thickness / 2), // position
 				    chip_logical, "Chip", world_logical, false, 0, true);
+			}
+		}
+
+		if (detector_variant.find("pcb") != std::string::npos) {
+			std::vector<std::tuple<std::string, G4Material*, double>> layers {
+				{"PCB Copper", mat_copper, pcb_copper_thickness},
+				{"PCB Kapton", mat_kapton, pcb_polyimide_thickness},
+			};
+			double depth = backplate_thickness + chip_thickness;
+
+			for (auto &[name, mat, thickness] : layers) {
+				G4Box *box =
+					new G4Box(name, world_width / 2, world_height / 2, thickness / 2);
+				G4LogicalVolume *logical =
+					new G4LogicalVolume(box, mat, name);
+				G4VPhysicalVolume *physical = new G4PVPlacement(
+					nullptr,                                      // rotation
+					G4ThreeVector(0, 0, depth + thickness / 2), // position
+					logical, name, world_logical, false, 0, true);
+				
+				depth += thickness;
 			}
 		}
 
@@ -185,19 +217,21 @@ class HitSimTrackingAction : public G4UserTrackingAction {
 		std::string   particle_name     = track->GetParticleDefinition()->GetParticleName();
 		G4ThreeVector particle_position = track->GetPosition();
 		G4ThreeVector particle_momentum = track->GetMomentum();
+		double        particle_energy   = track->GetKineticEnergy();
 
 		if (particle_name != "proton") {
 			return;
 		}
 
 		std::string line = string_format(
-		    "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n",
+		    "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %0.3f %s\n",
 		    particle_position.getX() / mm,  // stop clang-format
 		    particle_position.getY() / mm,  //
 		    particle_position.getZ() / mm,  //
 		    particle_momentum.getX() / MeV, //
 		    particle_momentum.getY() / MeV, //
 		    particle_momentum.getZ() / MeV, //
+		    particle_energy / MeV,          //
 		    particle_name.c_str()           //
 		);
 
