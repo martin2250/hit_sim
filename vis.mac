@@ -33,5 +33,7 @@
 /hit_sim/set_detector_variant backplate_chip_pcb
 /hit_sim/set_backplate_thickness 0.35 mm
 
+/hit_sim/set_pcb_trace_fill 0.5 mm
+
 /run/initialize
 /run/beamOn 1000

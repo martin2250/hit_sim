@@ -31,8 +31,10 @@ double chip_gap            = 200 * um;
 double chip_gap_offset     = 0 * mm;
 
 // https://www.multi-circuit-boards.eu/en/pcb-design-aid/layer-buildup/flexible-pcb.html
-double pcb_copper_thickness = 36 * um; // 2 * 18 um
+double pcb_copper_thickness = 18 * um; // 2 * 18 um
 double pcb_polyimide_thickness = 91 * um; // 25 + 2 * 13 + 2 * 20 (includes coverlay adhesive)
+double pcb_trace_spacing = 400 * um;
+double pcb_trace_fill = 0.5 * mm; // ignore mm
 
 double particle_energy = 1 * MeV;
 
@@ -49,9 +51,10 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 	virtual G4VPhysicalVolume *Construct() {
 		G4NistManager *nist = G4NistManager::Instance();
 
-		G4Material *mat_air =
-		    nist->BuildMaterialWithNewDensity("G5_VACUUM", "G4_AIR", 0.1 * g / m3);
-		// G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
+		// G4Material *mat_air =
+		//     nist->BuildMaterialWithNewDensity("G5_VACUUM", "G4_AIR", 0.1 * g / m3);
+		G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
+		G4Material *mat_water = nist->FindOrBuildMaterial("G4_WATER");
 		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
 		G4Material *mat_carbon  = nist->FindOrBuildMaterial("G4_C");
 		G4Material *mat_copper  = nist->FindOrBuildMaterial("G4_Cu");
@@ -143,21 +146,66 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 		}
 
 		if (detector_variant.find("pcb") != std::string::npos) {
-			std::vector<std::tuple<std::string, G4Material*, double>> layers {
-				{"PCB Copper", mat_copper, pcb_copper_thickness},
-				{"PCB Kapton", mat_kapton, pcb_polyimide_thickness},
+			std::vector<std::tuple<std::string, G4Material*, double, int>> layers {
+				{"PCB Copper Top", mat_copper, pcb_copper_thickness, 1},
+				{"PCB Kapton", mat_kapton, pcb_polyimide_thickness, 0},
+				{"PCB Copper Bottom", mat_copper, pcb_copper_thickness, -1},
 			};
 			double depth = backplate_thickness + chip_thickness;
 
-			for (auto &[name, mat, thickness] : layers) {
-				G4Box *box =
-					new G4Box(name, world_width / 2, world_height / 2, thickness / 2);
-				G4LogicalVolume *logical =
-					new G4LogicalVolume(box, mat, name);
-				G4VPhysicalVolume *physical = new G4PVPlacement(
-					nullptr,                                      // rotation
-					G4ThreeVector(0, 0, depth + thickness / 2), // position
-					logical, name, world_logical, false, 0, true);
+			for (auto &[name, mat, thickness, variant] : layers) {
+				if (variant == 0) {
+					G4cout << name << " placing full plate" << std::endl;
+					// simple continuous layer
+					G4Box *box =
+						new G4Box(name, world_width / 2, world_height / 2, thickness / 2);
+					G4LogicalVolume *logical =
+						new G4LogicalVolume(box, mat, name);
+					G4VisAttributes* attr = new G4VisAttributes( G4Colour(204.0/255.0, 106.0/255.0, 37.0/255.0, 1.) );
+					logical->SetVisAttributes(attr);
+					G4VPhysicalVolume *physical = new G4PVPlacement(
+						nullptr,                                    // rotation
+						G4ThreeVector(0, 0, depth + thickness / 2), // position
+						logical, name, world_logical, false, 0, true);
+				} else {
+					// horizontal (1) or vertical (-1) stripes
+					double trace_width = pcb_trace_spacing * pcb_trace_fill / mm; // pcb_trace_fill has units mm
+					if (variant == 1) {
+						G4Box *box = new G4Box(
+							name, //
+							world_width / 2,
+							trace_width / 2,
+							thickness / 2
+						);
+						G4LogicalVolume *logical = new G4LogicalVolume(box, mat, name);
+						G4VisAttributes* attr = new G4VisAttributes( G4Colour(128.0/255.0, 53.0/255.0, 0.0) );
+						logical->SetVisAttributes(attr);
+						for (double pos = -(world_height / 2); (pos + trace_width) < (world_height / 2); pos += pcb_trace_spacing) {
+							G4cout << name << " placing horizontal strip with height=" << trace_width << " at y=" << pos + (trace_width/2) << std::endl;
+							G4VPhysicalVolume *physical = new G4PVPlacement(
+								nullptr,                                    // rotation
+								G4ThreeVector(0, pos + (trace_width/2), depth + thickness / 2), // position
+								logical, name, world_logical, false, 0, true);
+						}
+					} else {
+						G4Box *box = new G4Box(
+							name, //
+							trace_width / 2,
+							world_height / 2,
+							thickness / 2
+						);
+						G4LogicalVolume *logical = new G4LogicalVolume(box, mat, name);
+						G4VisAttributes* attr = new G4VisAttributes( G4Colour(128.0/255.0, 53.0/255.0, 0.0) );
+						logical->SetVisAttributes(attr);
+						for (double pos = -(world_width / 2); (pos + trace_width) < (world_width / 2); pos += pcb_trace_spacing) {
+							G4cout << name << " placing vertical strip with width=" << trace_width << " at x=" << pos + (trace_width/2) << std::endl;
+							G4VPhysicalVolume *physical = new G4PVPlacement(
+								nullptr,                                    // rotation
+								G4ThreeVector(pos + (trace_width/2), 0, depth + thickness / 2), // position
+								logical, name, world_logical, false, 0, true);
+						}
+					}
+				}
 				
 				depth += thickness;
 			}
@@ -273,12 +321,16 @@ class HitSimMessenger : public G4UImessenger {
 	G4UIdirectory *          dir_hitsim;
 	G4UIcmdWithoutParameter *cmd_detector_update;
 
-	std::tuple<G4UIcmdWithADoubleAndUnit *, std::string, double *> double_params[5] = {
+	std::tuple<G4UIcmdWithADoubleAndUnit *, std::string, double *> double_params[9] = {
 	    std::make_tuple(nullptr, "/hit_sim/set_gap_position", &chip_gap_offset),
 	    std::make_tuple(nullptr, "/hit_sim/set_gap_width", &chip_gap),
 	    std::make_tuple(nullptr, "/hit_sim/set_backplate_thickness", &backplate_thickness),
 	    std::make_tuple(nullptr, "/hit_sim/set_chip_thickness", &chip_thickness),
 	    std::make_tuple(nullptr, "/hit_sim/set_particle_energy", &particle_energy),
+	    std::make_tuple(nullptr, "/hit_sim/set_pcb_copper_thickness", &pcb_copper_thickness),
+	    std::make_tuple(nullptr, "/hit_sim/set_pcb_polyimide_thickness", &pcb_polyimide_thickness),
+	    std::make_tuple(nullptr, "/hit_sim/set_pcb_trace_spacing", &pcb_trace_spacing),
+	    std::make_tuple(nullptr, "/hit_sim/set_pcb_trace_fill", &pcb_trace_fill),
 	};
 
 	G4UIcmdWithAString *     cmd_file_open;
