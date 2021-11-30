@@ -53,11 +53,12 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 
 		// G4Material *mat_air =
 		//     nist->BuildMaterialWithNewDensity("G5_VACUUM", "G4_AIR", 0.1 * g / m3);
-		G4Material *mat_air		= nist->FindOrBuildMaterial("G4_AIR");
-		G4Material *mat_water = nist->FindOrBuildMaterial("G4_WATER");
-		G4Material *mat_silicon = nist->FindOrBuildMaterial("G4_Si");
-		G4Material *mat_carbon  = nist->FindOrBuildMaterial("G4_C");
-		G4Material *mat_copper  = nist->FindOrBuildMaterial("G4_Cu");
+		G4Material *mat_air		 = nist->FindOrBuildMaterial("G4_AIR");
+		G4Material *mat_water    = nist->FindOrBuildMaterial("G4_WATER");
+		G4Material *mat_silicon  = nist->FindOrBuildMaterial("G4_Si");
+		G4Material *mat_carbon   = nist->FindOrBuildMaterial("G4_C");
+		G4Material *mat_copper   = nist->FindOrBuildMaterial("G4_Cu");
+		G4Material *mat_aluminum = nist->FindOrBuildMaterial("G4_Al");
 
 		G4Element *el_carbon   = nist->FindOrBuildElement("C");
 		G4Element *el_oxygen   = nist->FindOrBuildElement("O");
@@ -146,11 +147,18 @@ class HitSimDetectorConstruction : public G4VUserDetectorConstruction {
 		}
 
 		if (detector_variant.find("pcb") != std::string::npos) {
+			G4Material *mat_trace = mat_copper;
+			if (detector_variant.find("aluminumtrace") != std::string::npos) {
+				mat_trace = mat_aluminum;
+			}
 			std::vector<std::tuple<std::string, G4Material*, double, int>> layers {
-				{"PCB Copper Top", mat_copper, pcb_copper_thickness, 1},
+				{"PCB Copper Top", mat_trace, pcb_copper_thickness, 1},
 				{"PCB Kapton", mat_kapton, pcb_polyimide_thickness, 0},
-				{"PCB Copper Bottom", mat_copper, pcb_copper_thickness, -1},
+				{"PCB Copper Bottom", mat_trace, pcb_copper_thickness, -1},
 			};
+			if (detector_variant.find("onelayer") != std::string::npos) {
+				layers.pop_back();
+			} 
 			double depth = backplate_thickness + chip_thickness;
 
 			for (auto &[name, mat, thickness, variant] : layers) {
