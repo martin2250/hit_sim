@@ -9,7 +9,7 @@ import pathlib
 import glob
 import os
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import hashlib
 import scipy.optimize
@@ -44,11 +44,12 @@ class Parameters:
     gap_position: float = 0
     chip_thickness: float = 0.1
     backplate_thickness: float = 0.2
-    particle_energy: float = 100
+    particle_energy: float = 100 # PER U!!
     particle_count: int = 40000
     detector_variant: str = 'chip_backplate_pcb'
     pcb_trace_fill: float = 0.5
     pcb_copper_thickness: float = 0.018
+    use_carbon_ions: float = 0.0
 
 hitsim_path = pathlib.Path(__file__).parent.parent / 'release' / 'hit_sim'
 os.system(f'cd {hitsim_path.parent} && ninja')
@@ -60,8 +61,11 @@ class Scene:
     result: Optional[Result] = None
 
     def get_filename(self) -> pathlib.Path:
-        ph = hashlib.md5(json.dumps(dataclasses.asdict(self.parameters)).encode()).hexdigest()
-        return pathlib.Path('/tmp/') / f'hit_sim_{ph}.txt'
+        md5 = hashlib.md5(json.dumps(dataclasses.asdict(self.parameters)).encode())
+        with open(hitsim_path, 'rb') as f:
+            md5.update(f.read())
+        ph = md5.hexdigest()
+        return pathlib.Path('/tmp/hit_sim/') / f'hit_sim_{ph}.txt'
 
     def load_result(self):
         res_dtype = 'f,f,f,f,f,f,f,S8'
@@ -71,7 +75,7 @@ class Scene:
         energy = np.array(data[6])
         ptype = np.array(data[7])
 
-        ok = (ptype == b'proton') & (energy > 5)
+        ok = ((ptype == b'proton') | (ptype == b'alpha')) & (energy > 5)
 
         angle_x = np.arctan2(momentum[0], momentum[2])
 
@@ -89,6 +93,7 @@ class Scene:
 
     def run(self):
         filename = self.get_filename()
+        filename.parent.mkdir(parents=True, exist_ok=True)
         if filename.exists():
             print(f'using cached result for {filename}')
             return
@@ -102,12 +107,14 @@ class Scene:
             f'/hit_sim/set_backplate_thickness {self.parameters.backplate_thickness} mm',
             f'/hit_sim/set_pcb_trace_fill {self.parameters.pcb_trace_fill} mm',
             f'/hit_sim/set_pcb_copper_thickness {self.parameters.pcb_copper_thickness} mm',
+            f'/hit_sim/set_use_carbon_ions {self.parameters.use_carbon_ions} mm',
             f'/hit_sim/file_open {filename}',
             f'/run/initialize',
             f'/run/beamOn {self.parameters.particle_count}',
             f'/hit_sim/file_close',
         ]
         mac_path = filename.with_suffix('.mac')
+        mac_path.parent.mkdir(parents=True, exist_ok=True)
         with open(mac_path, 'w') as f:
             for param in parameters:
                 print(param, file=f)
@@ -128,18 +135,31 @@ for gap_position in np.linspace(0, 1, 3):
         gap_position = gap_position,
     )))
 
-scene_water = Scene(Parameters(
-    detector_variant='backplate_water',
-    backplate_thickness=1,
-))
+scenes_water_eq = [
+    Scene(Parameters()),
+    Scene(Parameters(
+        detector_variant='chip_backplate_pcb_onelayer',
+    )),
+    Scene(Parameters(
+        detector_variant='chip_backplate_pcb_aluminumtrace',
+    )),
+    Scene(Parameters(
+        detector_variant='backplate_water',
+        backplate_thickness=1,
+    )),
+]
 
-scene_without_pcb = Scene(Parameters(
-    detector_variant='backplate_chips',
-))
+names_water_eq = [
+    'HitPix detector',
+    'one copper layer',
+    'aluminum traces',
+    '1 mm water',
+]
 
-scene_one_layer = Scene(Parameters(
-    detector_variant='chip_backplate_pcb_onelayer',
-))
+scenes_water_eq_carbon = [
+    Scene(replace(scene.parameters, use_carbon_ions=1.0))
+    for scene in scenes_water_eq
+]
 
 scenes_trace_fill: list[Scene] = []
 for pcb_trace_fill in [0.01, 0.3, 0.5, 0.99]:
@@ -160,21 +180,14 @@ for energy in np.geomspace(50, 250, 6):
         particle_energy=energy,
     )))
 
-scene_aluminumtrace = Scene(Parameters(
-    detector_variant='chip_backplate_pcb_aluminumtrace',
-))
 
 scenes: list[Scene] = []
 scenes.extend(scenes_offset)
-scenes.append(scene_water)
-scenes.append(scene_aluminumtrace)
-# scenes.append(scene_without_pcb)
-scenes.append(scene_one_layer)
+scenes.extend(scenes_water_eq)
+scenes.extend(scenes_water_eq_carbon)
 scenes.extend(scenes_trace_fill)
 scenes.extend(scenes_copper_thickness)
 scenes.extend(scenes_energy)
-
-print(scenes)
 
 tpe = ThreadPoolExecutor(6)
 _ = list(tpe.map(lambda s: s.run(), scenes))
@@ -191,9 +204,6 @@ def plot_scene_e_alpha(scene: Scene, ax_angle: plt.Axes, ax_momentum: plt.Axes, 
 
     deflection_x = result.position[0] + 0.5e3 * result.angle_x
 
-    print(result.position[0])
-    print(deflection_x)
-
     deflection_range = (-4, 4)
 
     ax_angle.set_ylim(0, 1200)
@@ -206,11 +216,18 @@ def plot_scene_e_alpha(scene: Scene, ax_angle: plt.Axes, ax_momentum: plt.Axes, 
 
     # fwhm = abs(popt[0]* 2.355)
 
-    fwhm = np.percentile(np.abs(deflection_x), 95)
-    print(label, fwhm)
+    # fwhm = np.percentile(np.abs(deflection_x), 95)
+    # print(label, fwhm)
+
+    print(label)
+    print(deflection_x)
+    print(np.sum(np.abs(deflection_x) < 3.5))
+    print(label)
+
+    percent_x = np.sum(np.abs(deflection_x) < 3.5) / len(deflection_x)
 
     ax_angle.hist(deflection_x, range=deflection_range,
-                  bins=100, log=False, histtype='step', label=f'{fwhm:0.2f} mm')
+                  bins=100, log=False, histtype='step', label=f'{100*percent_x:0.1f}%')
     ax_momentum.hist(result.energy, range=momentum_range,
                      bins=100, log=False, histtype='step', label=label)
     # x_min = np.percentile(result.angle_x, 12)
@@ -240,31 +257,35 @@ def plot_gap_positions():
         plot_scene_e_alpha(scene, ax_angle, ax_momentum, f'gap offset {scene.parameters.gap_position} mm')
 
     ax_angle.set_xlabel('Deflection at 0.5m (mm)')
-    ax_momentum.set_xlabel('Remaining Energy (MeV)')
+    ax_momentum.set_xlabel('Remaining Energy (MeV/u)')
 
     ax_momentum.legend(loc='upper left')
     ax_angle.legend(loc='upper left')
 
-    fig.savefig('/tmp/gap_positions.png', dpi=150, transparent=True)
+    fig.savefig('./plots/gap_positions.png', dpi=150, transparent=True)
 
-def plot_water_equivalent():
+def plot_water_equivalent(use_carbon: bool):
     fig, (ax_momentum, ax_angle) = plt.subplots(1, 2, figsize=(9, 5))
 
     # fig.suptitle('Compare with simplified Stackups')
 
-    plot_scene_e_alpha(scenes_offset[0], ax_angle, ax_momentum, 'HitPix detector')
-    plot_scene_e_alpha(scene_one_layer, ax_angle, ax_momentum, 'one copper layer')
-    plot_scene_e_alpha(scene_aluminumtrace, ax_angle, ax_momentum, 'aluminum traces')
-    plot_scene_e_alpha(scene_water, ax_angle, ax_momentum, '1 mm water')
-    # plot_scene_e_alpha(scene_without_pcb, ax_angle, ax_momentum, 'without PCB')
+    scenes_we = scenes_water_eq
+    if use_carbon:
+        scenes_we = scenes_water_eq_carbon
+
+    for s, n in zip(scenes_we, names_water_eq):
+        plot_scene_e_alpha(s, ax_angle, ax_momentum, n)
 
     ax_angle.set_xlabel('Deflection at 0.5m (mm)')
-    ax_momentum.set_xlabel('Remaining Energy (MeV)')
+    ax_momentum.set_xlabel('Remaining Energy (MeV/u)')
 
     ax_momentum.legend(loc='upper left')
     ax_angle.legend(loc='upper left')
 
-    fig.savefig('/tmp/water_equivalent.png', dpi=150, transparent=True)
+    if use_carbon:
+        fig.savefig('./plots/water_equivalent_carbon.png', dpi=150, transparent=True)
+    else:
+        fig.savefig('./plots/water_equivalent.png', dpi=150, transparent=True)
 
 def plot_trace_fill():
     fig, (ax_momentum, ax_angle) = plt.subplots(1, 2, figsize=(9, 5))
@@ -275,12 +296,12 @@ def plot_trace_fill():
         plot_scene_e_alpha(scene, ax_angle, ax_momentum, f'fill factor {scene.parameters.pcb_trace_fill}')
 
     ax_angle.set_xlabel('Deflection at 0.5m (mm)')
-    ax_momentum.set_xlabel('Remaining Energy (MeV)')
+    ax_momentum.set_xlabel('Remaining Energy (MeV/u)')
 
     ax_momentum.legend(loc='upper left')
     ax_angle.legend(loc='upper left')
 
-    fig.savefig('/tmp/trace_fill.png', dpi=150, transparent=True)
+    fig.savefig('./plots/trace_fill.png', dpi=150, transparent=True)
 
 def plot_copper_thickness():
     fig, (ax_momentum, ax_angle) = plt.subplots(1, 2, figsize=(9, 5))
@@ -291,12 +312,12 @@ def plot_copper_thickness():
         plot_scene_e_alpha(scene, ax_angle, ax_momentum, f'{scene.parameters.pcb_copper_thickness*1e3} um copper')
 
     ax_angle.set_xlabel('Deflection at 0.5m (mm)')
-    ax_momentum.set_xlabel('Remaining Energy (MeV)')
+    ax_momentum.set_xlabel('Remaining Energy (MeV/u)')
 
     ax_momentum.legend(loc='upper left')
     ax_angle.legend(loc='upper left')
 
-    fig.savefig('/tmp/copper_thickness.png', dpi=150, transparent=True)
+    fig.savefig('./plots/copper_thickness.png', dpi=150, transparent=True)
 
 def plot_fwhm_over_energy():
     fig, ax = plt.subplots(1, 1) #, figsize=(9, 5))
@@ -321,15 +342,16 @@ def plot_fwhm_over_energy():
 
     ax.plot(E, np.array(A) * 0.5e3 * 2.355, 'x')
     ax.semilogx()
-    ax.set_xlabel('Beam Energy (MeV)')
+    ax.set_xlabel('Beam Energy (MeV/u)')
     ax.set_ylabel('Spot FWHM at 0.5m (mm)')
-    fig.savefig('/tmp/spot_size_energy.png', dpi=150, transparent=True)
+    fig.savefig('./plots/spot_size_energy.png', dpi=150, transparent=True)
 
 
 
-plot_water_equivalent()
+plot_water_equivalent(True)
+plot_water_equivalent(False)
 plot_gap_positions()
 plot_trace_fill()
 plot_copper_thickness()
 
-# plot_fwhm_over_energy()
+plot_fwhm_over_energy()

@@ -11,6 +11,7 @@
 #include "G4UImanager.hh"
 #include "G4UImessenger.hh"
 #include "G4UserLimits.hh"
+#include "G4IonTable.hh"
 #include "G4VUserActionInitialization.hh"
 #include "G4VUserDetectorConstruction.hh"
 #include "G4VUserPrimaryGeneratorAction.hh"
@@ -37,6 +38,7 @@ double pcb_trace_spacing = 400 * um;
 double pcb_trace_fill = 0.5 * mm; // ignore mm
 
 double particle_energy = 1 * MeV;
+double use_carbon_ions = 0.0;
 
 std::string detector_variant = "chip_backplate_pcb";
 
@@ -228,12 +230,18 @@ class HitSimPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction {
 	HitSimPrimaryGeneratorAction() {
 		this->fParticleGun                  = new G4ParticleGun(1);
 		G4ParticleTable *     particleTable = G4ParticleTable::GetParticleTable();
-		G4ParticleDefinition *particle      = particleTable->FindParticle("proton");
-		this->fParticleGun->SetParticleDefinition(particle);
 		this->fParticleGun->SetParticlePosition(G4ThreeVector(0 * mm, 0, -9 * mm));
 		this->fParticleGun->SetParticleMomentumDirection(G4ThreeVector(0, 0, 1));
-		this->fParticleGun->SetParticleEnergy(particle_energy);
-
+		if (use_carbon_ions > (0.5 * mm)) {
+			G4cout << "USING CARBON!!" << std::endl;
+			G4ParticleDefinition *particle      = particleTable->FindParticle("alpha");
+			this->fParticleGun->SetParticleDefinition(particle);
+			this->fParticleGun->SetParticleEnergy(4 * particle_energy);
+		} else {
+			G4ParticleDefinition *particle      = particleTable->FindParticle("proton");
+			this->fParticleGun->SetParticleDefinition(particle);
+			this->fParticleGun->SetParticleEnergy(particle_energy);
+		}
 		this->gauss = new CLHEP::RandGauss(CLHEP::RandGauss::getTheEngine());
 	}
 	virtual ~HitSimPrimaryGeneratorAction() { delete this->fParticleGun; }
@@ -274,8 +282,9 @@ class HitSimTrackingAction : public G4UserTrackingAction {
 		G4ThreeVector particle_position = track->GetPosition();
 		G4ThreeVector particle_momentum = track->GetMomentum();
 		double        particle_energy   = track->GetKineticEnergy();
+		particle_energy /= track->GetParticleDefinition()->GetAtomicMass();
 
-		if (particle_name != "proton") {
+		if ((particle_name != "proton") && (particle_name != "alpha")) {
 			return;
 		}
 
@@ -329,7 +338,7 @@ class HitSimMessenger : public G4UImessenger {
 	G4UIdirectory *          dir_hitsim;
 	G4UIcmdWithoutParameter *cmd_detector_update;
 
-	std::tuple<G4UIcmdWithADoubleAndUnit *, std::string, double *> double_params[9] = {
+	std::tuple<G4UIcmdWithADoubleAndUnit *, std::string, double *> double_params[10] = {
 	    std::make_tuple(nullptr, "/hit_sim/set_gap_position", &chip_gap_offset),
 	    std::make_tuple(nullptr, "/hit_sim/set_gap_width", &chip_gap),
 	    std::make_tuple(nullptr, "/hit_sim/set_backplate_thickness", &backplate_thickness),
@@ -339,6 +348,7 @@ class HitSimMessenger : public G4UImessenger {
 	    std::make_tuple(nullptr, "/hit_sim/set_pcb_polyimide_thickness", &pcb_polyimide_thickness),
 	    std::make_tuple(nullptr, "/hit_sim/set_pcb_trace_spacing", &pcb_trace_spacing),
 	    std::make_tuple(nullptr, "/hit_sim/set_pcb_trace_fill", &pcb_trace_fill),
+	    std::make_tuple(nullptr, "/hit_sim/set_use_carbon_ions", &use_carbon_ions),
 	};
 
 	G4UIcmdWithAString *     cmd_file_open;
